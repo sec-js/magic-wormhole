@@ -3,7 +3,10 @@ User-visible changes in "magic-wormhole":
 ## Upcoming Release
 
 * (add release-notes here when making PRs)
-
+* Update minimal Python version in README.md (#634 @sblondon)
+* Remove 'u' prefix to strings (#636 @sblondon)
+* Use classes directly instead of type() calls (#637 @sblondon)
+* Doc: remove details about python2 types (#638 @sblondon)
 
 ## Release 0.19.2 (30-May-2025)
 
