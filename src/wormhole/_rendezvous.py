@@ -62,9 +62,9 @@ class WSFactory(websocket.WebSocketClientFactory):
 @attrs
 @implementer(_interfaces.IRendezvousConnector)
 class RendezvousConnector(object):
-    _url = attrib(validator=instance_of(type(u"")))
-    _appid = attrib(validator=instance_of(type(u"")))
-    _side = attrib(validator=instance_of(type(u"")))
+    _url = attrib(validator=instance_of(type("")))
+    _appid = attrib(validator=instance_of(type("")))
+    _side = attrib(validator=instance_of(type("")))
     _reactor = attrib()
     _journal = attrib(validator=provides(_interfaces.IJournal))
     _tor = attrib(validator=optional(provides(_interfaces.ITorManager)))
@@ -79,7 +79,12 @@ class RendezvousConnector(object):
         self._trace = None
         self._ws = None
         f = WSFactory(self, self._url)
-        f.setProtocolOptions(autoPingInterval=60, autoPingTimeout=600)
+        # kind-of match what Dilation does for peer connections;
+        # there, we send a ping every 30s and give up on the
+        # connection if two fail in a row -- autobahn doesn't give us
+        # _quite_ those same hooks, but we time out in 60s which will
+        # be similar behavior.
+        f.setProtocolOptions(autoPingInterval=30, autoPingTimeout=60)
         ep = self._make_endpoint(self._url)
 
         # ideally, Twisted's ClientService would have an API to tell
@@ -118,7 +123,7 @@ class RendezvousConnector(object):
             return self._tor.stream_via(p.hostname, port, tls=tls)
         if tls:
             return endpoints.clientFromString(self._reactor,
-                                              "tls:%s:%s" % (p.hostname, port))
+                                              f"tls:{p.hostname}:{port}")
         return endpoints.HostnameEndpoint(self._reactor, p.hostname, port)
 
     def wire(self, boss, nameplate, mailbox, allocator, lister, terminator):
@@ -141,8 +146,8 @@ class RendezvousConnector(object):
         self._tx("open", mailbox=mailbox)
 
     def tx_add(self, phase, body):
-        assert isinstance(phase, type("")), type(phase)
-        assert isinstance(body, type(b"")), type(body)
+        assert isinstance(phase, str), type(phase)
+        assert isinstance(body, bytes), type(body)
         self._tx("add", phase=phase, body=bytes_to_hexstr(body))
 
     def tx_release(self, nameplate):
@@ -219,7 +224,7 @@ class RendezvousConnector(object):
             # make tests fail, but real application will ignore it
             log.err(
                 errors._UnknownMessageTypeError(
-                    "Unknown inbound message type %r" % (msg, )))
+                    f"Unknown inbound message type {msg!r}"))
             return
         try:
             return meth(msg)
@@ -272,14 +277,16 @@ class RendezvousConnector(object):
         # are so few messages, 16 bits is enough to be mostly-unique.
         kwargs["id"] = bytes_to_hexstr(os.urandom(2))
         kwargs["type"] = mtype
-        self._debug("R.tx(%s %s)" % (mtype.upper(), kwargs.get("phase", "")))
+        self._debug(f"R.tx({mtype.upper()} {kwargs.get('phase', '')})")
         payload = dict_to_bytes(kwargs)
         self._timing.add("ws_send", _side=self._side, **kwargs)
         self._ws.sendMessage(payload, False)
+        # might be nice to have a "debug" hook here to track all
+        # messages sent to the mailbox, with timestamps
 
     def _response_handle_allocated(self, msg):
         nameplate = msg["nameplate"]
-        assert isinstance(nameplate, type("")), type(nameplate)
+        assert isinstance(nameplate, str), type(nameplate)
         self._A.rx_allocated(nameplate)
 
     def _response_handle_nameplates(self, msg):
@@ -290,7 +297,7 @@ class RendezvousConnector(object):
         for n in nameplates:
             assert isinstance(n, dict), type(n)
             nameplate_id = n["id"]
-            assert isinstance(nameplate_id, type("")), type(nameplate_id)
+            assert isinstance(nameplate_id, str), type(nameplate_id)
             nids.add(nameplate_id)
         # deliver a set of nameplate ids
         self._L.rx_nameplates(nids)
@@ -312,13 +319,13 @@ class RendezvousConnector(object):
 
     def _response_handle_claimed(self, msg):
         mailbox = msg["mailbox"]
-        assert isinstance(mailbox, type("")), type(mailbox)
+        assert isinstance(mailbox, str), type(mailbox)
         self._N.rx_claimed(mailbox)
 
     def _response_handle_message(self, msg):
         side = msg["side"]
         phase = msg["phase"]
-        assert isinstance(phase, type("")), type(phase)
+        assert isinstance(phase, str), type(phase)
         body = hexstr_to_bytes(msg["body"])  # bytes
         self._M.rx_message(side, phase, body)
 
